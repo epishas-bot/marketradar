@@ -1,10 +1,17 @@
 const { pool } = require('./db');
 const { decrypt } = require('./crypto');
-const { fetchAllSellerPrices, fetchSitePrices, computeSppPercent } = require('./wbClient');
+const { fetchAllSellerPrices } = require('./wbClient');
+
+// Раньше здесь же тянули "цену на сайте" через card.wb.ru прямо с сервера. Wildberries
+// блокирует такие запросы на уровне edge-защиты, если они приходят с адресов облачных
+// хостингов (Render и подобные) — сервер получает 403 ещё до своего кода (см. wbClient.js).
+// Поэтому цену на сайте теперь дотягивает браузер самого продавца (см. public/js/dashboard.js,
+// POST /api/wb/site-prices ниже) — синхронизация здесь отвечает только за цену продавца.
 
 /**
- * Полная синхронизация одного пользователя: тянет его товары и цены продавца из WB,
- * тянет цены на сайте, считает СПП и сохраняет снимок по каждому товару.
+ * Синхронизация цены продавца одного пользователя: тянет все его товары и цены
+ * через официальный API "Цены и скидки", сохраняет снимок по каждому товару
+ * (site_price/spp_percent пока NULL — их отдельно допишет браузер).
  * Возвращает { count, skipped, syncedAt }.
  */
 async function syncUserProducts(userId) {
@@ -28,28 +35,15 @@ async function syncUserProducts(userId) {
     sellerItems = sellerItems.slice(0, skuLimit);
   }
 
-  const nmIds = sellerItems.map((i) => i.nmId);
-  const sitePrices = await fetchSitePrices(nmIds);
-  const siteWarning = sitePrices.error || null;
-
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const insertSql = `
       INSERT INTO price_snapshots (user_id, nm_id, vendor_code, seller_price, site_price, spp_percent)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2, $3, $4, NULL, NULL)
     `;
     for (const item of sellerItems) {
-      const sitePrice = sitePrices.has(item.nmId) ? sitePrices.get(item.nmId) : null;
-      const sppPercent = computeSppPercent(item.sellerPrice, sitePrice);
-      await client.query(insertSql, [
-        userId,
-        item.nmId,
-        item.vendorCode,
-        item.sellerPrice,
-        sitePrice,
-        sppPercent,
-      ]);
+      await client.query(insertSql, [userId, item.nmId, item.vendorCode, item.sellerPrice]);
     }
     await client.query('COMMIT');
   } catch (err) {
@@ -63,7 +57,6 @@ async function syncUserProducts(userId) {
     count: sellerItems.length,
     skipped,
     syncedAt: new Date().toISOString(),
-    warning: siteWarning,
   };
 }
 

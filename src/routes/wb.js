@@ -56,6 +56,44 @@ router.post('/sync', async (req, res) => {
   }
 });
 
+// Цену на сайте (card.wb.ru) сервер получить не может — Wildberries блокирует такие
+// запросы с адресов облачных хостингов. Поэтому её получает сам браузер продавца
+// (см. public/js/dashboard.js) и присылает сюда, а мы дописываем её в самый свежий
+// снимок по каждому товару и пересчитываем СПП.
+router.post('/site-prices', asyncHandler(async (req, res) => {
+  const { prices } = req.body || {};
+  if (!Array.isArray(prices) || prices.length === 0) {
+    return res.status(400).json({ error: 'Нужен непустой список цен' });
+  }
+
+  const userId = req.session.userId;
+  let updated = 0;
+  for (const item of prices) {
+    const nmId = Number(item?.nmId);
+    const sitePrice = Number(item?.sitePrice);
+    if (!Number.isFinite(nmId) || !Number.isFinite(sitePrice) || sitePrice <= 0) continue;
+
+    const result = await pool.query(
+      `UPDATE price_snapshots
+       SET site_price = $1,
+           spp_percent = CASE
+             WHEN seller_price > 0 THEN GREATEST(0, ROUND((1 - $1 / seller_price) * 100, 1))
+             ELSE NULL
+           END
+       WHERE id = (
+         SELECT id FROM price_snapshots
+         WHERE user_id = $2 AND nm_id = $3
+         ORDER BY checked_at DESC
+         LIMIT 1
+       )`,
+      [sitePrice, userId, nmId]
+    );
+    if (result.rowCount > 0) updated += 1;
+  }
+
+  res.json({ updated, received: prices.length });
+}));
+
 router.get('/products', asyncHandler(async (req, res) => {
   const result = await pool.query(
     `SELECT ps.nm_id AS "nmId", ps.vendor_code AS "vendorCode", ps.seller_price AS "sellerPrice",
