@@ -39,7 +39,18 @@ app.use('/api/wb', wbRoutes);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    // Без этого браузеры иногда продолжают показывать старую версию dashboard.js/style.css
+    // после деплоя новой — no-cache не отключает кэш полностью, а заставляет браузер каждый
+    // раз спросить сервер "не изменился ли файл", прежде чем показать закэшированную копию.
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.js') || filePath.endsWith('.css') || filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    },
+  })
+);
 
 // Единообразные ответы на ошибки в async-роутах, которые не поймали исключение сами.
 app.use((err, req, res, next) => {
