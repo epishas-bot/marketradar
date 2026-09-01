@@ -215,8 +215,19 @@ async function fetchSitePricesViaBrowser(nmIds, onItemDone) {
           let diagnostic = '';
           try {
             const title = await page.title();
+            const url = page.url();
             const vpnBlock = await page.$('#blockedVpn').catch(() => null);
-            diagnostic = ` — заголовок страницы: "${title}"${vpnBlock ? ', обнаружен блок VPN/прокси (#blockedVpn)' : ''}`;
+            // Короткий кусок видимого текста страницы — то, что реально показывается в
+            // браузере: если это капча/антибот-заглушка, здесь почти наверняка будет
+            // что-то вроде "проверьте, что вы не робот" или похожее, а не обычный текст
+            // карточки товара. Обрезаем, чтобы не раздувать лог.
+            const bodyText = await page
+              .evaluate(() => document.body?.innerText?.slice(0, 200) || '')
+              .catch(() => '');
+            diagnostic =
+              ` — адрес: "${url}", заголовок: "${title}"` +
+              `${vpnBlock ? ', обнаружен блок VPN/прокси (#blockedVpn)' : ''}` +
+              `${bodyText ? `, текст на странице: "${bodyText.replace(/\s+/g, ' ').trim()}"` : ', текст на странице пуст'}`;
           } catch (diagErr) {
             // Не смогли прочитать даже это — не страшно, просто без диагностики.
           }
