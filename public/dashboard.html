@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Товары и СПП — MarketRadar</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <div id="app-nav"></div>
+
+    <div class="card panel" id="connect-panel" hidden>
+      <h2>Подключите Wildberries</h2>
+      <p class="lede">Вставьте API-токен продавца с правами на категорию «Цены и скидки» (личный кабинет WB → Настройки → Доступ к API).</p>
+      <div class="field">
+        <label for="wb-token">API-токен</label>
+        <input type="text" id="wb-token" placeholder="eyJhbGciOi...">
+      </div>
+      <div class="error-msg" id="token-error"></div>
+      <button type="button" id="save-token-btn">Подключить</button>
+    </div>
+
+    <div class="card panel" id="products-panel" hidden>
+      <h2>Товары и текущий СПП</h2>
+      <p class="lede">Цена продавца — то, что вы указали в кабинете (после вашей собственной скидки, до СПП). Цена на сайте — то, что сейчас видит покупатель. СПП — разница между ними. Нажмите на строку, чтобы увидеть историю по товару.</p>
+
+      <div class="sync-row">
+        <button type="button" id="sync-btn">Синхронизировать сейчас</button>
+        <span class="sync-status" id="sync-status"></span>
+      </div>
+
+      <div class="filter-row" style="margin-top:18px;">
+        <input type="text" id="filter-input" placeholder="Фильтр по артикулу или SKU">
+      </div>
+
+      <div class="table-wrap">
+        <table class="products" id="products-table" hidden>
+          <thead>
+            <tr>
+              <th>Артикул WB</th>
+              <th>SKU продавца</th>
+              <th>Цена продавца</th>
+              <th>Цена на сайте</th>
+              <th>СПП</th>
+              <th>Обновлено</th>
+            </tr>
+          </thead>
+          <tbody id="products-body"></tbody>
+        </table>
+        <div class="empty-state" id="empty-state">Пока нет данных — нажмите «Синхронизировать сейчас».</div>
+      </div>
+
+      <p class="note">Цена на сайте берётся с открытой (незалогиненной) карточки товара, поэтому это ориентир, а не гарантированно точная персональная скидка конкретного покупателя — у WB СПП может отличаться от сессии к сессии. Общую динамику и факторы смотрите на вкладке «Факторы СПП».</p>
+    </div>
+  </div>
+
+  <script src="/js/nav.js"></script>
+  <script src="/js/charts.js"></script>
+  <script src="/js/dashboard.js"></script>
+</body>
+</html>

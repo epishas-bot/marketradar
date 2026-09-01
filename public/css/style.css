@@ -1,0 +1,284 @@
+:root {
+  --ink: #14161c;
+  --ink-soft: #565b68;
+  --ink-faint: #8a8f9c;
+  --ground: #f4f3ef;
+  --surface: #ffffff;
+  --surface-2: #eae8e2;
+  --border: #dcdad2;
+  --accent: #0f9d78;
+  --accent-ink: #ffffff;
+  --good: #1f9254;
+  --warn: #b3791b;
+  --bad: #c23f3f;
+  --shadow: 0 1px 2px rgba(20,22,28,0.04), 0 8px 24px -12px rgba(20,22,28,0.12);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+.wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+}
+
+.center-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 1.1rem; margin: 0 0 4px; }
+p.lede { color: var(--ink-soft); font-size: 0.92rem; max-width: 60ch; margin: 0 0 20px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 24px;
+}
+
+.auth-card { width: 100%; max-width: 380px; }
+
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+.field label { font-size: 0.8rem; color: var(--ink-soft); font-weight: 500; }
+
+input[type="email"], input[type="password"], input[type="text"], select {
+  font-size: 0.95rem;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--ink);
+  width: 100%;
+  font-family: inherit;
+}
+input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+button {
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+button:hover { filter: brightness(1.05); }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+button.secondary {
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--border);
+}
+
+.tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--border); }
+.tabs button {
+  background: none;
+  color: var(--ink-soft);
+  border-radius: 0;
+  padding: 8px 4px;
+  margin-right: 16px;
+  border-bottom: 2px solid transparent;
+}
+.tabs button.active { color: var(--ink); border-bottom-color: var(--accent); }
+
+.error-msg {
+  color: var(--bad);
+  font-size: 0.85rem;
+  margin: 4px 0 12px;
+  min-height: 1.2em;
+}
+
+header.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+header.top .who { font-size: 0.88rem; color: var(--ink-soft); }
+header.top .who b { color: var(--ink); }
+
+/* Общая навигация модулей продукта */
+.nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 14px 0 16px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+.nav-brand {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.nav-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+.nav-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.nav-tab:hover { background: var(--surface-2); color: var(--ink); }
+.nav-tab.active { background: var(--surface-2); color: var(--ink); font-weight: 600; }
+.nav-soon {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: #fdf1cf;
+  color: var(--warn);
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+.nav-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+/* Заглушка модуля "скоро" */
+.stub-card {
+  text-align: left;
+  max-width: 640px;
+}
+.stub-card .stub-eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--warn);
+  margin-bottom: 8px;
+}
+.stub-card ul.plan-list {
+  padding-left: 20px;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+.stub-card ul.plan-list li { margin-bottom: 4px; }
+
+.panel { margin-bottom: 20px; }
+
+.sync-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.sync-status { font-size: 0.85rem; color: var(--ink-soft); }
+.sync-status.sync-warning { color: var(--warn); }
+
+table.products {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+table.products th {
+  text-align: right;
+  font-weight: 500;
+  color: var(--ink-faint);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0 8px 8px;
+  border-bottom: 1px solid var(--border);
+}
+table.products th:first-child, table.products th:nth-child(2),
+table.products td:first-child, table.products td:nth-child(2) { text-align: left; }
+table.products td {
+  padding: 9px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+table.products tbody tr:hover { background: var(--surface-2); }
+.spp-cell { font-weight: 700; }
+.spp-high { color: var(--good); }
+.spp-mid { color: var(--warn); }
+.spp-low { color: var(--ink-soft); }
+
+.table-wrap { overflow-x: auto; }
+
+.history-row td { background: var(--surface-2); padding: 0; }
+.history-chart { padding: 12px 16px; min-height: 160px; }
+
+.viz-legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  margin-bottom: 6px;
+}
+.viz-legend .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+
+.factor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+.factor-card h3 { font-size: 0.95rem; margin: 0 0 4px; }
+.factor-card p.hint { font-size: 0.8rem; color: var(--ink-faint); margin: 4px 0 0; }
+
+table.movers { width: 100%; border-collapse: collapse; font-size: 0.86rem; margin-top: 8px; }
+table.movers th {
+  text-align: right; font-weight: 500; color: var(--ink-faint); font-size: 0.68rem;
+  text-transform: uppercase; letter-spacing: 0.03em; padding: 0 6px 6px; border-bottom: 1px solid var(--border);
+}
+table.movers th:first-child, table.movers th:nth-child(2), table.movers td:first-child, table.movers td:nth-child(2) { text-align: left; }
+table.movers td { padding: 7px 6px; text-align: right; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+/* Направление изменения СПП — нейтральный индикатор: рост скидки не всегда
+   "хорошо" или "плохо" для продавца (зависит от того, кто её финансирует),
+   поэтому здесь нет зелёного/красного, только стрелка и величина. */
+.delta-pill {
+  display: inline-flex; align-items: center; gap: 4px; font-weight: 600; padding: 2px 8px;
+  border-radius: 999px; font-size: 0.82rem; background: var(--surface-2); color: var(--ink);
+}
+.delta-flat { color: var(--ink-soft); font-weight: 500; }
+
+.empty-state {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  padding: 20px 0;
+  text-align: center;
+}
+
+.filter-row { margin-bottom: 12px; max-width: 280px; }
+
+.note {
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+  margin-top: 14px;
+}

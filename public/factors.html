@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Факторы СПП — MarketRadar</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <div id="app-nav"></div>
+
+    <div class="card panel">
+      <h2>Динамика и факторы СПП</h2>
+      <p class="lede">Построено на истории синхронизаций из раздела «Товары и СПП» — чем дольше собираете данные, тем достовернее картина. Wildberries не раскрывает, что именно определяет размер СПП, поэтому здесь статистика по вашим фактам, а не подтверждённые площадкой причины.</p>
+
+      <div class="filter-row" style="max-width:220px;">
+        <label style="font-size:0.8rem;color:var(--ink-soft);display:block;margin-bottom:5px;">Период</label>
+        <select id="days-select">
+          <option value="7">7 дней</option>
+          <option value="30" selected>30 дней</option>
+          <option value="90">90 дней</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card panel" id="empty-panel" hidden>
+      <p class="empty-state" style="padding:0;">Пока недостаточно данных. Синхронизируйтесь несколько раз в разные дни на вкладке «Товары и СПП», и здесь появится динамика.</p>
+    </div>
+
+    <div id="factors-content" hidden>
+      <div class="card panel">
+        <h3 style="margin-top:0;">Средний СПП по дням</h3>
+        <p class="hint">Среднее по всем товарам за каждый день синхронизации.</p>
+        <div id="chart-trend" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="factor-grid">
+        <div class="card panel factor-card">
+          <h3>По дню недели</h3>
+          <p class="hint">Средний СПП в один и тот же день недели за весь выбранный период.</p>
+          <div id="chart-weekday" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="card panel factor-card">
+          <h3>По цене товара</h3>
+          <p class="hint">Средний СПП сейчас, товары сгруппированы по вашей цене в кабинете.</p>
+          <div id="chart-price" style="margin-top:10px;"></div>
+        </div>
+      </div>
+
+      <div class="card panel">
+        <h3 style="margin-top:0;">Сильнее всего изменился СПП</h3>
+        <p class="hint">Сравнение первого и последнего снимка за выбранный период по каждому товару.</p>
+        <div class="table-wrap">
+          <table class="movers" id="movers-table">
+            <thead>
+              <tr><th>Артикул</th><th>SKU</th><th>Было</th><th>Стало</th><th>Изменение</th></tr>
+            </thead>
+            <tbody id="movers-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/nav.js"></script>
+  <script src="/js/charts.js"></script>
+  <script src="/js/factors.js"></script>
+</body>
+</html>

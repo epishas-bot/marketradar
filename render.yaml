@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: marketradar
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: marketradar-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: APP_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+      - key: DEST_REGION
+        value: "-1257786"
+      - key: AUTO_SYNC_MINUTES
+        value: "60"
+
+databases:
+  - name: marketradar-db
+    plan: starter
+    databaseName: marketradar
+    user: marketradar

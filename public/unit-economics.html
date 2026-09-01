@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Юнит-экономика — MarketRadar</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <div id="app-nav"></div>
+
+    <div class="card stub-card">
+      <div class="stub-eyebrow">В разработке</div>
+      <h2>Юнит-экономика</h2>
+      <p class="lede">Расчёт чистой прибыли с одной единицы товара: себестоимость, логистика до склада маркетплейса, комиссия площадки, эквайринг, реклама, хранение, процент выкупа и возвратов — и итог с учётом СПП, который уже считает раздел «Товары и СПП».</p>
+      <p style="font-size:0.88rem;color:var(--ink-soft);">Что войдёт в первую версию:</p>
+      <ul class="plan-list">
+        <li>Карточка расчёта на один SKU с сохранением набора статей расходов как шаблона</li>
+        <li>Автоматическая подстановка текущей цены и комиссии из уже подключённого аккаунта Wildberries</li>
+        <li>Точка безубыточности: при какой цене и при какой СПП экономика уходит в минус</li>
+        <li>Пакетный расчёт по всем товарам сразу, с сортировкой по марже</li>
+      </ul>
+    </div>
+  </div>
+
+  <script src="/js/nav.js"></script>
+  <script>renderNav('unit-economics');</script>
+</body>
+</html>

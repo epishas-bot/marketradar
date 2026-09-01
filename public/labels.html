@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Этикетки — MarketRadar</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <div id="app-nav"></div>
+
+    <div class="card stub-card">
+      <div class="stub-eyebrow">В разработке</div>
+      <h2>Генерация этикеток</h2>
+      <p class="lede">Штрихкод-этикетки на короб и на единицу товара — по вашему списку SKU, без захода в личный кабинет каждой площадки по отдельности.</p>
+      <p style="font-size:0.88rem;color:var(--ink-soft);">Что войдёт в первую версию:</p>
+      <ul class="plan-list">
+        <li>Загрузка списка артикулов и количества → PDF с этикетками, готовый к печати на листах А4 или на рулонном принтере</li>
+        <li>Штрихкод товара (EAN-13 / Code128) плюс название, цена и артикул продавца на этикетке</li>
+        <li>Шаблоны под частые размеры этикеток (58×40, 58×60, А4 на 14 или 21 наклейку)</li>
+      </ul>
+      <p class="note" style="margin-top:16px;">Отдельно уточним: печать коробочных этикеток для FBS/FBO у WB и Ozon обычно уже есть в их личных кабинетах — этот раздел имеет смысл прежде всего для этикеток на сам товар и для случаев, когда нужно печатать сразу под несколько площадок по одному списку.</p>
+    </div>
+  </div>
+
+  <script src="/js/nav.js"></script>
+  <script>renderNav('labels');</script>
+</body>
+</html>

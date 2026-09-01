@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Контент карточек — MarketRadar</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <div id="app-nav"></div>
+
+    <div class="card stub-card">
+      <div class="stub-eyebrow">В разработке</div>
+      <h2>Генерация контента для карточек</h2>
+      <p class="lede">Заголовок, описание и буллиты для карточки товара, сгенерированные из характеристик товара и нескольких ваших ключевых слов — с учётом требований площадки к длине и структуре текста.</p>
+      <p style="font-size:0.88rem;color:var(--ink-soft);">Что войдёт в первую версию:</p>
+      <ul class="plan-list">
+        <li>Ввод характеристик товара и целевых ключевых слов → черновик названия, описания и буллитов</li>
+        <li>Несколько вариантов на выбор и редактирование прямо на странице</li>
+        <li>Отдельные форматы под лимиты Wildberries, Ozon и Яндекс Маркета — у них разные ограничения по длине</li>
+      </ul>
+      <p class="note" style="margin-top:16px;">Модуль потребует подключения LLM API (например, Anthropic) — обсудим ключ и лимиты, когда дойдём до этого раздела по очереди.</p>
+    </div>
+  </div>
+
+  <script src="/js/nav.js"></script>
+  <script>renderNav('content');</script>
+</body>
+</html>
