@@ -111,13 +111,16 @@ async function fetchSitePrices(nmIds) {
 
   for (let i = 0; i < nmIds.length; i += CARD_BATCH_SIZE) {
     const batch = nmIds.slice(i, i + CARD_BATCH_SIZE);
-    const url = `${CARD_HOST}/cards/v2/detail?appType=1&curr=rub&dest=${DEST_REGION}&spp=0&nm=${batch.join(';')}`;
+    // v2 отключён Wildberries в 2026 году (сначала отдавал 403 из облака, а из обычного
+    // браузера — честный 404: маршрута больше нет). Актуальная версия — v4, и у неё другая
+    // форма ответа: товары лежат прямо в json.products, а не в json.data.products.
+    const url = `${CARD_HOST}/cards/v4/detail?appType=1&curr=rub&dest=${DEST_REGION}&spp=0&nm=${batch.join(';')}`;
 
     try {
       const res = await fetch(url, { headers: BROWSER_HEADERS });
       if (res.ok) {
         const json = await res.json();
-        const products = json?.data?.products || [];
+        const products = json?.products || json?.data?.products || [];
         for (const p of products) {
           const nmId = p.id ?? p.nmId;
           // Разные версии этого эндпоинта отдавали цену в разных местах и в копейках —
