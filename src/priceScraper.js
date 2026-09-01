@@ -202,10 +202,26 @@ async function fetchSitePricesViaBrowser(nmIds, onItemDone) {
           } else {
             failedCount += 1;
             lastError = `nmId ${nmId}: ответ пришёл, но цена не нашлась в ожидаемых полях`;
+            console.warn(`[priceScraper] ${lastError}`);
           }
         } else {
           failedCount += 1;
-          lastError = `nmId ${nmId}: не дождались внутреннего запроса цены (антибот/блокировка/таймаут)`;
+          // Раньше этот случай (страница загрузилась, но нужный внутренний запрос так и
+          // не пришёл) не попадал в лог вообще — виден был только явный сетевой сбой
+          // (типа ERR_TUNNEL_CONNECTION_FAILED), а такой "тихий" таймаут выглядел как
+          // будто всё в порядке. Добавляем сюда же название вкладки и проверку на
+          // известный признак блокировки (см. заголовок файла про blockedVpn) — это
+          // помогает отличить "антибот не пропустил" от "прокси просто не достучался".
+          let diagnostic = '';
+          try {
+            const title = await page.title();
+            const vpnBlock = await page.$('#blockedVpn').catch(() => null);
+            diagnostic = ` — заголовок страницы: "${title}"${vpnBlock ? ', обнаружен блок VPN/прокси (#blockedVpn)' : ''}`;
+          } catch (diagErr) {
+            // Не смогли прочитать даже это — не страшно, просто без диагностики.
+          }
+          lastError = `nmId ${nmId}: не дождались внутреннего запроса цены (антибот/блокировка/таймаут)${diagnostic}`;
+          console.warn(`[priceScraper] ${lastError}`);
         }
       } catch (err) {
         failedCount += 1;
