@@ -94,11 +94,13 @@ function extractKopecks(product) {
  * страницы плюс пауза (по умолчанию ~5 сек) перед следующей, чтобы не выглядеть ботом.
  * Для каталога в 50 товаров это несколько минут — предупреждение об этом есть в интерфейсе.
  *
- * onProgress(done, total), если передан, вызывается после каждого товара (успешного или
- * нет) — используется, чтобы показать продавцу реальный прогресс синхронизации, идущей
- * в фоне (см. src/syncStatus.js), а не просто "идёт синхронизация" без деталей.
+ * onItemDone(nmId, sitePrice, done, total), если передан, вызывается после каждого
+ * товара (успешного или нет — тогда sitePrice будет null) и может быть async: вызывающий
+ * код (syncService.js) использует это, чтобы сразу сохранить снимок цены в базу и
+ * обновить прогресс — так продавец видит товар в таблице сразу, как только он обработан,
+ * а не ждёт, пока обработаются вообще все.
  */
-async function fetchSitePricesViaBrowser(nmIds, onProgress) {
+async function fetchSitePricesViaBrowser(nmIds, onItemDone) {
   const result = new Map();
   const proxies = parseProxies(process.env.RESIDENTIAL_PROXIES);
 
@@ -146,6 +148,8 @@ async function fetchSitePricesViaBrowser(nmIds, onProgress) {
       });
       const page = await context.newPage();
 
+      let sitePrice = null;
+
       try {
         const responsePromise = page
           .waitForResponse(
@@ -167,7 +171,8 @@ async function fetchSitePricesViaBrowser(nmIds, onProgress) {
             products.find((p) => Number(p.id ?? p.nmId) === nmId) || products[0] || null;
           const kopecks = extractKopecks(product);
           if (kopecks != null) {
-            result.set(nmId, kopecks / 100);
+            sitePrice = kopecks / 100;
+            result.set(nmId, sitePrice);
           } else {
             failedCount += 1;
             lastError = `nmId ${nmId}: ответ пришёл, но цена не нашлась в ожидаемых полях`;
@@ -185,7 +190,10 @@ async function fetchSitePricesViaBrowser(nmIds, onProgress) {
       }
 
       requestsOnCurrentProxy += 1;
-      if (onProgress) onProgress(i + 1, nmIds.length);
+      // onItemDone получает результат сразу по каждому товару (а не пачкой в конце) —
+      // это то, что позволяет syncService.js сохранять снимок в базу и продавцу видеть
+      // строку в таблице сразу, как только она обработалась, а не ждать весь прогон.
+      if (onItemDone) await onItemDone(nmId, sitePrice, i + 1, nmIds.length);
 
       if (i < nmIds.length - 1) {
         await sleep(jitter(NAV_DELAY_MS));

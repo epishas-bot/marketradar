@@ -16,6 +16,12 @@ const { fetchSitePricesViaBrowser } = require('./priceScraper');
  * (см. priceScraper.js). Для каталогов от нескольких десятков товаров синхронизация
  * может занимать несколько минут — это ожидаемо, не зависание.
  *
+ * Снимок по каждому товару сохраняется в базу сразу, как только для него получена (или
+ * не получена) цена на сайте — не пачкой в самом конце. Это значит, что продавец видит
+ * товар в таблице «Товары и СПП» сразу по ходу синхронизации, а не только после того,
+ * как обработаются вообще все товары каталога (при синхронизации в несколько минут это
+ * ощутимая разница).
+ *
  * onProgress(done, total), если передан, вызывается по ходу получения цены на сайте —
  * см. priceScraper.js и src/syncStatus.js (используется, чтобы показать реальный
  * прогресс синхронизации, идущей в фоне, независимо от того, какая страница открыта).
@@ -44,34 +50,39 @@ async function syncUserProducts(userId, onProgress) {
   }
 
   const nmIds = sellerItems.map((item) => item.nmId);
-  const sitePrices = await fetchSitePricesViaBrowser(nmIds, onProgress);
+  const sellerByNmId = new Map(sellerItems.map((item) => [item.nmId, item]));
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const insertSql = `
-      INSERT INTO price_snapshots (user_id, nm_id, vendor_code, seller_price, site_price, spp_percent)
-      VALUES ($1, $2, $3, $4, $5, $6)
-    `;
-    for (const item of sellerItems) {
-      const sitePrice = sitePrices.get(item.nmId) ?? null;
+  const insertSql = `
+    INSERT INTO price_snapshots (user_id, nm_id, vendor_code, seller_price, site_price, spp_percent)
+    VALUES ($1, $2, $3, $4, $5, $6)
+  `;
+
+  // Вызывается из priceScraper.js сразу после каждого товара — здесь и происходит
+  // собственно "появление строки в таблице": как только снимок сохранён в базу,
+  // GET /api/wb/products на следующем опросе с фронтенда уже его отдаст.
+  const onItemDone = async (nmId, sitePrice, done, total) => {
+    const item = sellerByNmId.get(nmId);
+    if (item) {
       const sppPercent = computeSppPercent(item.sellerPrice, sitePrice);
-      await client.query(insertSql, [
-        userId,
-        item.nmId,
-        item.vendorCode,
-        item.sellerPrice,
-        sitePrice,
-        sppPercent,
-      ]);
+      try {
+        await pool.query(insertSql, [
+          userId,
+          item.nmId,
+          item.vendorCode,
+          item.sellerPrice,
+          sitePrice,
+          sppPercent,
+        ]);
+      } catch (err) {
+        // Не прерываем всю синхронизацию из-за проблемы с одной строкой — просто
+        // логируем и идём дальше к следующему товару.
+        console.error(`syncService: не удалось сохранить снимок nmId ${nmId}:`, err.message);
+      }
     }
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+    if (onProgress) onProgress(done, total);
+  };
+
+  const sitePrices = await fetchSitePricesViaBrowser(nmIds, onItemDone);
 
   return {
     count: sellerItems.length,
