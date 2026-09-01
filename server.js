@@ -68,15 +68,30 @@ async function start() {
   const autoSyncMinutes = Number(process.env.AUTO_SYNC_MINUTES || 0);
   if (autoSyncMinutes > 0) {
     console.log(`Автосинхронизация включена: каждые ${autoSyncMinutes} мин.`);
+    // Получение цены на сайте теперь идёт через настоящий браузер (Playwright) —
+    // на пользователя с большим каталогом один проход может занять несколько минут
+    // (см. src/priceScraper.js). Этот флаг не даёт следующему тику автосинхронизации
+    // начаться поверх предыдущего, если тот ещё не закончился — иначе на маленьком
+    // Render-инстансе быстро накопится несколько параллельных Chromium.
+    let autoSyncRunning = false;
     setInterval(async () => {
-      const { rows } = await pool.query('SELECT user_id FROM wb_credentials');
-      for (const { user_id: userId } of rows) {
-        try {
-          const result = await syncUserProducts(userId);
-          console.log(`Автосинхронизация: user ${userId} — ${result.count} товаров`);
-        } catch (err) {
-          console.error(`Автосинхронизация: user ${userId} — ошибка:`, err.message);
+      if (autoSyncRunning) {
+        console.warn('Автосинхронизация: предыдущий проход ещё не завершился, пропускаем тик');
+        return;
+      }
+      autoSyncRunning = true;
+      try {
+        const { rows } = await pool.query('SELECT user_id FROM wb_credentials');
+        for (const { user_id: userId } of rows) {
+          try {
+            const result = await syncUserProducts(userId);
+            console.log(`Автосинхронизация: user ${userId} — ${result.count} товаров`);
+          } catch (err) {
+            console.error(`Автосинхронизация: user ${userId} — ошибка:`, err.message);
+          }
         }
+      } finally {
+        autoSyncRunning = false;
       }
     }, autoSyncMinutes * 60 * 1000);
   }

@@ -1,18 +1,22 @@
 const { pool } = require('./db');
 const { decrypt } = require('./crypto');
-const { fetchAllSellerPrices } = require('./wbClient');
-
-// Раньше здесь же тянули "цену на сайте" через card.wb.ru прямо с сервера. Wildberries
-// блокирует такие запросы на уровне edge-защиты, если они приходят с адресов облачных
-// хостингов (Render и подобные) — сервер получает 403 ещё до своего кода (см. wbClient.js).
-// Поэтому цену на сайте теперь дотягивает браузер самого продавца (см. public/js/dashboard.js,
-// POST /api/wb/site-prices ниже) — синхронизация здесь отвечает только за цену продавца.
+const { fetchAllSellerPrices, computeSppPercent } = require('./wbClient');
+const { fetchSitePricesViaBrowser } = require('./priceScraper');
 
 /**
- * Синхронизация цены продавца одного пользователя: тянет все его товары и цены
- * через официальный API "Цены и скидки", сохраняет снимок по каждому товару
- * (site_price/spp_percent пока NULL — их отдельно допишет браузер).
- * Возвращает { count, skipped, syncedAt }.
+ * Полная синхронизация одного пользователя за один шаг (то, что происходит по нажатию
+ * "Синхронизировать сейчас"): тянет все его товары и цену продавца через официальный
+ * API Wildberries "Цены и скидки", затем цену на сайте (после СПП) через управляемый
+ * браузер за резидентным/мобильным прокси (см. priceScraper.js), считает СПП и
+ * сохраняет снимок по каждому товару. Продавцу не нужно ничего дополнительно
+ * настраивать — обе цены получает сам сервер.
+ *
+ * Вторая часть (цена на сайте) ощутимо медленнее первой — на каждый товар нужна
+ * полноценная загрузка страницы в браузере плюс пауза, чтобы не выглядеть ботом
+ * (см. priceScraper.js). Для каталогов от нескольких десятков товаров синхронизация
+ * может занимать несколько минут — это ожидаемо, не зависание.
+ *
+ * Возвращает { count, skipped, syncedAt, siteWarning }.
  */
 async function syncUserProducts(userId) {
   const credRes = await pool.query('SELECT token_encrypted FROM wb_credentials WHERE user_id = $1', [
@@ -35,15 +39,27 @@ async function syncUserProducts(userId) {
     sellerItems = sellerItems.slice(0, skuLimit);
   }
 
+  const nmIds = sellerItems.map((item) => item.nmId);
+  const sitePrices = await fetchSitePricesViaBrowser(nmIds);
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const insertSql = `
       INSERT INTO price_snapshots (user_id, nm_id, vendor_code, seller_price, site_price, spp_percent)
-      VALUES ($1, $2, $3, $4, NULL, NULL)
+      VALUES ($1, $2, $3, $4, $5, $6)
     `;
     for (const item of sellerItems) {
-      await client.query(insertSql, [userId, item.nmId, item.vendorCode, item.sellerPrice]);
+      const sitePrice = sitePrices.get(item.nmId) ?? null;
+      const sppPercent = computeSppPercent(item.sellerPrice, sitePrice);
+      await client.query(insertSql, [
+        userId,
+        item.nmId,
+        item.vendorCode,
+        item.sellerPrice,
+        sitePrice,
+        sppPercent,
+      ]);
     }
     await client.query('COMMIT');
   } catch (err) {
@@ -57,6 +73,7 @@ async function syncUserProducts(userId) {
     count: sellerItems.length,
     skipped,
     syncedAt: new Date().toISOString(),
+    siteWarning: sitePrices.error || null,
   };
 }
 

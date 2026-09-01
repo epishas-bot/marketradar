@@ -1,10 +1,12 @@
 services:
   - type: web
     name: marketradar
-    runtime: node
-    plan: starter
-    buildCommand: npm install
-    startCommand: npm start
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # standard, не starter: headless Chromium (для получения цены на сайте, см.
+    # src/priceScraper.js) заметно прожорливее по памяти, чем обычный Node-процесс.
+    plan: standard
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
@@ -17,10 +19,13 @@ services:
         generateValue: true
       - key: NODE_ENV
         value: production
-      - key: DEST_REGION
-        value: "-1257786"
       - key: AUTO_SYNC_MINUTES
         value: "60"
+      # Резидентные/мобильные прокси для получения цены на сайте — задайте вручную в
+      # Render (Environment), не через generateValue: там логин/пароль от вашего
+      # прокси-провайдера. Формат и объяснение — в .env.example и README.
+      - key: RESIDENTIAL_PROXIES
+        sync: false
 
 databases:
   - name: marketradar-db

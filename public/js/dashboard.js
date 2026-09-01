@@ -24,41 +24,6 @@ function sppClass(pct) {
   return 'spp-low';
 }
 
-// Цену на сайте сервер получить не может — Wildberries блокирует такие запросы с адресов
-// облачных хостингов (см. README). Поэтому её достаёт браузер продавца — прямо отсюда,
-// с обычного пользовательского адреса — и присылает результат на сервер.
-const CARD_HOST = 'https://card.wb.ru';
-const DEST_REGION = '-1257786'; // регион по умолчанию — Москва, как и на сервере
-const CARD_BATCH_SIZE = 50;
-
-async function fetchSitePricesFromBrowser(nmIds) {
-  const prices = [];
-  for (let i = 0; i < nmIds.length; i += CARD_BATCH_SIZE) {
-    const batch = nmIds.slice(i, i + CARD_BATCH_SIZE);
-    const url = `${CARD_HOST}/cards/v4/detail?appType=1&curr=rub&dest=${DEST_REGION}&spp=0&nm=${batch.join(';')}`;
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const json = await res.json();
-        const products = json?.products || json?.data?.products || [];
-        for (const p of products) {
-          const nmId = p.id ?? p.nmId;
-          const kopecks = p.salePriceU ?? p.sizes?.[0]?.price?.total ?? p.sizes?.[0]?.price?.product ?? p.priceU ?? null;
-          if (nmId && kopecks != null) {
-            prices.push({ nmId: Number(nmId), sitePrice: kopecks / 100 });
-          }
-        }
-      }
-    } catch (err) {
-      // один неудачный батч не должен обрывать остальные — просто пропускаем эти товары
-    }
-    if (i + CARD_BATCH_SIZE < nmIds.length) {
-      await new Promise((r) => setTimeout(r, 200));
-    }
-  }
-  return prices;
-}
-
 async function init() {
   await renderNav('products');
   await refreshStatus();
@@ -199,24 +164,14 @@ syncBtn.addEventListener('click', async () => {
     }
     const skippedNote = data.skipped > 0 ? ` (пропущено ${data.skipped} — лимит тарифа)` : '';
     await loadProducts();
-
-    syncStatus.textContent = `Цены продавца обновлены (${data.count}${skippedNote}). Уточняем цены на сайте из вашего браузера...`;
-    const nmIds = allProducts.map((p) => p.nmId);
-    const sitePrices = await fetchSitePricesFromBrowser(nmIds);
-
-    if (sitePrices.length > 0) {
-      await fetch('/api/wb/site-prices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prices: sitePrices }),
-      });
-      await loadProducts();
+    if (data.siteWarning) {
+      syncStatus.classList.add('sync-warning');
       syncStatus.textContent =
-        `Готово: ${data.count} товаров${skippedNote}, цены на сайте получены для ${sitePrices.length} из ${nmIds.length}, ${fmtDate(data.syncedAt)}`;
+        `Цены продавца обновлены: ${data.count} товаров${skippedNote}, ${fmtDate(data.syncedAt)}. ` +
+        `Цену на сайте получить не удалось: ${data.siteWarning}`;
     } else {
       syncStatus.textContent =
-        `Цены продавца обновлены (${data.count}${skippedNote}), но цены на сайте браузер получить не смог — возможно, Wildberries временно блокирует и эти запросы. Попробуйте синхронизировать ещё раз чуть позже.`;
-      syncStatus.classList.add('sync-warning');
+        `Обновлено: ${data.count} товаров${skippedNote}, ${fmtDate(data.syncedAt)}.`;
     }
   } catch (err) {
     syncStatus.textContent = 'Не удалось связаться с сервером';
