@@ -48,6 +48,13 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS idx_snapshots_user_time
       ON price_snapshots (user_id, checked_at);
   `);
+
+  // Добавлено позже исходной схемы — ADD COLUMN IF NOT EXISTS безопасно применяется и на
+  // свежей базе (после CREATE TABLE выше), и на уже существующей в проде.
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires TIMESTAMPTZ;
+  `);
 }
 
 module.exports = { pool, migrate };

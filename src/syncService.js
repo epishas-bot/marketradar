@@ -16,9 +16,13 @@ const { fetchSitePricesViaBrowser } = require('./priceScraper');
  * (см. priceScraper.js). Для каталогов от нескольких десятков товаров синхронизация
  * может занимать несколько минут — это ожидаемо, не зависание.
  *
+ * onProgress(done, total), если передан, вызывается по ходу получения цены на сайте —
+ * см. priceScraper.js и src/syncStatus.js (используется, чтобы показать реальный
+ * прогресс синхронизации, идущей в фоне, независимо от того, какая страница открыта).
+ *
  * Возвращает { count, skipped, syncedAt, siteWarning }.
  */
-async function syncUserProducts(userId) {
+async function syncUserProducts(userId, onProgress) {
   const credRes = await pool.query('SELECT token_encrypted FROM wb_credentials WHERE user_id = $1', [
     userId,
   ]);
@@ -40,7 +44,7 @@ async function syncUserProducts(userId) {
   }
 
   const nmIds = sellerItems.map((item) => item.nmId);
-  const sitePrices = await fetchSitePricesViaBrowser(nmIds);
+  const sitePrices = await fetchSitePricesViaBrowser(nmIds, onProgress);
 
   const client = await pool.connect();
   try {

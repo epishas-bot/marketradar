@@ -104,6 +104,18 @@ button.secondary {
   min-height: 1.2em;
 }
 
+.success-msg {
+  color: var(--good);
+  font-size: 0.9rem;
+  margin: 4px 0 12px;
+}
+
+.forgot-link {
+  margin: -6px 0 14px;
+  font-size: 0.85rem;
+}
+.forgot-link a { color: var(--ink-soft); }
+
 header.top {
   display: flex;
   align-items: center;

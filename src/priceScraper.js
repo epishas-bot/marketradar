@@ -93,8 +93,12 @@ function extractKopecks(product) {
  * Это ощутимо медленнее одного HTTP-запроса: на каждый товар — полноценная загрузка
  * страницы плюс пауза (по умолчанию ~5 сек) перед следующей, чтобы не выглядеть ботом.
  * Для каталога в 50 товаров это несколько минут — предупреждение об этом есть в интерфейсе.
+ *
+ * onProgress(done, total), если передан, вызывается после каждого товара (успешного или
+ * нет) — используется, чтобы показать продавцу реальный прогресс синхронизации, идущей
+ * в фоне (см. src/syncStatus.js), а не просто "идёт синхронизация" без деталей.
  */
-async function fetchSitePricesViaBrowser(nmIds) {
+async function fetchSitePricesViaBrowser(nmIds, onProgress) {
   const result = new Map();
   const proxies = parseProxies(process.env.RESIDENTIAL_PROXIES);
 
@@ -181,6 +185,7 @@ async function fetchSitePricesViaBrowser(nmIds) {
       }
 
       requestsOnCurrentProxy += 1;
+      if (onProgress) onProgress(i + 1, nmIds.length);
 
       if (i < nmIds.length - 1) {
         await sleep(jitter(NAV_DELAY_MS));

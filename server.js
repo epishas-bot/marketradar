@@ -8,6 +8,7 @@ const { pool, migrate } = require('./src/db');
 const authRoutes = require('./src/routes/auth');
 const wbRoutes = require('./src/routes/wb');
 const { syncUserProducts } = require('./src/syncService');
+const syncStatus = require('./src/syncStatus');
 
 const PgSession = pgSessionFactory(session);
 const app = express();
@@ -83,10 +84,22 @@ async function start() {
       try {
         const { rows } = await pool.query('SELECT user_id FROM wb_credentials');
         for (const { user_id: userId } of rows) {
+          // Пропускаем, если продавец сам сейчас нажал "Синхронизировать" (см.
+          // src/syncStatus.js и src/routes/wb.js) — не запускаем на один аккаунт два
+          // параллельных прохода браузера сразу.
+          if (syncStatus.getStatus(userId).running) {
+            console.log(`Автосинхронизация: user ${userId} — уже идёт ручная синхронизация, пропускаем`);
+            continue;
+          }
           try {
-            const result = await syncUserProducts(userId);
+            syncStatus.startSync(userId, { total: null });
+            const result = await syncUserProducts(userId, (done, total) =>
+              syncStatus.updateProgress(userId, done, total)
+            );
+            syncStatus.finishSync(userId, result);
             console.log(`Автосинхронизация: user ${userId} — ${result.count} товаров`);
           } catch (err) {
+            syncStatus.failSync(userId, 'Синхронизация не удалась');
             console.error(`Автосинхронизация: user ${userId} — ошибка:`, err.message);
           }
         }

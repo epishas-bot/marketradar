@@ -3,6 +3,7 @@ const { pool } = require('../db');
 const { encrypt } = require('../crypto');
 const { verifyToken, WbApiError } = require('../wbClient');
 const { syncUserProducts } = require('../syncService');
+const syncStatus = require('../syncStatus');
 const { requireAuth } = require('../middleware/auth');
 const { asyncHandler } = require('../asyncHandler');
 
@@ -42,18 +43,41 @@ router.get('/token/status', asyncHandler(async (req, res) => {
   res.json({ connected: !!row, updatedAt: row ? row.updated_at : null });
 }));
 
-router.post('/sync', async (req, res) => {
-  try {
-    const result = await syncUserProducts(req.session.userId);
-    res.json(result);
-  } catch (err) {
-    if (err.code === 'NOT_CONNECTED') {
-      return res.status(400).json({ error: err.message });
-    }
-    const message = err instanceof WbApiError ? err.message : 'Синхронизация не удалась';
-    console.error('sync error:', err);
-    res.status(502).json({ error: message });
+// Синхронизация запускается в фоне и живёт независимо от HTTP-запроса, который её
+// вызвал: сама она может идти много минут (см. priceScraper.js), а продавец за это
+// время вполне может переключиться на другую вкладку кабинета (это отдельная
+// HTML-страница — переход на неё останавливает JS и fetch текущей), свернуть браузер
+// или потерять связь на секунду — раньше это обрывало прогресс. Теперь этот роут
+// только запускает работу и сразу отвечает; текущее состояние (идёт ли синхронизация,
+// на каком она шаге, чем закончилась прошлая) любая страница кабинета получает через
+// GET /sync/status, когда ей это нужно — хоть сразу после клика, хоть после того как
+// продавец вернулся на вкладку через 10 минут.
+router.post('/sync', asyncHandler(async (req, res) => {
+  const userId = req.session.userId;
+  const current = syncStatus.getStatus(userId);
+  if (current.running) {
+    return res.json({ started: false, alreadyRunning: true, status: current });
   }
+
+  syncStatus.startSync(userId, { total: null });
+  res.json({ started: true, status: syncStatus.getStatus(userId) });
+
+  syncUserProducts(userId, (done, total) => syncStatus.updateProgress(userId, done, total))
+    .then((result) => syncStatus.finishSync(userId, result))
+    .catch((err) => {
+      const message =
+        err.code === 'NOT_CONNECTED'
+          ? err.message
+          : err instanceof WbApiError
+            ? err.message
+            : 'Синхронизация не удалась';
+      console.error('sync error:', err);
+      syncStatus.failSync(userId, message);
+    });
+}));
+
+router.get('/sync/status', (req, res) => {
+  res.json(syncStatus.getStatus(req.session.userId));
 });
 
 router.get('/products', asyncHandler(async (req, res) => {

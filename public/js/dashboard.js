@@ -12,6 +12,7 @@ const emptyState = document.getElementById('empty-state');
 
 let allProducts = [];
 let openNmId = null;
+let syncPollTimer = null;
 
 const fmtMoney = (n) => (n == null ? '—' : Math.round(n).toLocaleString('ru-RU') + ' ₽');
 const fmtPct = (n) => (n == null ? '—' : Number(n).toFixed(1) + '%');
@@ -27,6 +28,15 @@ function sppClass(pct) {
 async function init() {
   await renderNav('products');
   await refreshStatus();
+  // Синхронизация идёт в фоне на сервере независимо от открытой страницы (см.
+  // src/syncStatus.js) — если продавец кликнул "Синхронизировать", ушёл на другую
+  // вкладку и вернулся сюда (или просто обновил страницу), нужно сразу показать, что
+  // синхронизация всё ещё идёт, а не дать кнопке выглядеть так, будто ничего не было.
+  const status = await fetch('/api/wb/sync/status').then((r) => r.json()).catch(() => null);
+  if (status && status.running) {
+    syncBtn.disabled = true;
+    startSyncPolling();
+  }
 }
 
 async function refreshStatus() {
@@ -150,34 +160,84 @@ saveTokenBtn.addEventListener('click', async () => {
   }
 });
 
+// Синхронизация запускается на сервере и живёт в фоне сама по себе (см.
+// src/syncStatus.js) — этот клик только даёт ей команду "начать" и сразу получает
+// подтверждение, а прогресс/результат дальше узнаём через опрос /sync/status. Так
+// переключение вкладки, обновление страницы или временная потеря связи с сервером
+// больше не обрывают саму синхронизацию — она продолжается на сервере в любом случае,
+// а страница просто снова её "увидит", когда опрос сработает в следующий раз.
 syncBtn.addEventListener('click', async () => {
   syncBtn.disabled = true;
   syncStatus.classList.remove('sync-warning');
-  syncStatus.textContent = 'Синхронизация может занять до пары минут на больших каталогах...';
+  syncStatus.textContent = 'Синхронизация запускается...';
 
   try {
-    const res = await fetch('/api/wb/sync', { method: 'POST' });
-    const data = await res.json();
-    if (!res.ok) {
-      syncStatus.textContent = data.error || 'Синхронизация не удалась';
-      return;
-    }
-    const skippedNote = data.skipped > 0 ? ` (пропущено ${data.skipped} — лимит тарифа)` : '';
-    await loadProducts();
-    if (data.siteWarning) {
-      syncStatus.classList.add('sync-warning');
-      syncStatus.textContent =
-        `Цены продавца обновлены: ${data.count} товаров${skippedNote}, ${fmtDate(data.syncedAt)}. ` +
-        `Цену на сайте получить не удалось: ${data.siteWarning}`;
-    } else {
-      syncStatus.textContent =
-        `Обновлено: ${data.count} товаров${skippedNote}, ${fmtDate(data.syncedAt)}.`;
-    }
+    await fetch('/api/wb/sync', { method: 'POST' });
   } catch (err) {
-    syncStatus.textContent = 'Не удалось связаться с сервером';
-  } finally {
-    syncBtn.disabled = false;
+    // Не страшно, даже если сам ответ на этот запрос не дошёл (например, оборвалась
+    // связь на секунду) — команда на сервер, скорее всего, уже ушла. Опрос статуса
+    // ниже сам разберётся, идёт синхронизация или нет.
   }
+  startSyncPolling();
 });
+
+function startSyncPolling() {
+  if (syncPollTimer) return;
+  pollSyncStatus();
+  syncPollTimer = setInterval(pollSyncStatus, 3000);
+}
+
+function stopSyncPolling() {
+  clearInterval(syncPollTimer);
+  syncPollTimer = null;
+}
+
+async function pollSyncStatus() {
+  let status;
+  try {
+    status = await fetch('/api/wb/sync/status').then((r) => r.json());
+  } catch (err) {
+    // Опрос не достучался до сервера — пробуем ещё раз на следующем тике, сама
+    // синхронизация от этого не останавливается.
+    return;
+  }
+
+  if (status.running) {
+    syncBtn.disabled = true;
+    const { done, total } = status.progress || {};
+    syncStatus.textContent =
+      total != null
+        ? `Синхронизация идёт: ${done} из ${total} товаров...`
+        : 'Синхронизация идёт, уточняем количество товаров...';
+    return;
+  }
+
+  stopSyncPolling();
+  syncBtn.disabled = false;
+
+  if (status.error) {
+    syncStatus.textContent = status.error;
+    return;
+  }
+
+  const data = status.result;
+  if (!data) {
+    // Ничего не запускали в этой сессии страницы и нет сохранённого результата — обычное
+    // состояние сразу после загрузки страницы, когда синхронизация ещё ни разу не была
+    // запущена с момента последнего перезапуска сервера.
+    return;
+  }
+
+  const skippedNote = data.skipped > 0 ? ` (пропущено ${data.skipped} — лимит тарифа)` : '';
+  await loadProducts();
+  if (data.siteWarning) {
+    syncStatus.classList.add('sync-warning');
+    syncStatus.textContent =
+      `Цены продавца обновлены: ${data.count} товаров${skippedNote}, ${fmtDate(data.syncedAt)}. ` +
+      `Цену на сайте получить не удалось: ${data.siteWarning}`;
+  } else {
+    syncStatus.textContent = `Обновлено: ${data.count} товаров${skippedNote}, ${fmtDate(data.syncedAt)}.`;
+  }
+}
 
 init();

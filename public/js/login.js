@@ -3,6 +3,8 @@ const tabRegister = document.getElementById('tab-register');
 const form = document.getElementById('auth-form');
 const submitBtn = document.getElementById('submit-btn');
 const errorEl = document.getElementById('error');
+const forgotLink = document.getElementById('forgot-link');
+const resetSuccessEl = document.getElementById('reset-success');
 
 let mode = 'login';
 
@@ -11,11 +13,16 @@ function setMode(next) {
   tabLogin.classList.toggle('active', mode === 'login');
   tabRegister.classList.toggle('active', mode === 'register');
   submitBtn.textContent = mode === 'login' ? 'Войти' : 'Создать аккаунт';
+  forgotLink.style.display = mode === 'login' ? 'block' : 'none';
   errorEl.textContent = '';
 }
 
 tabLogin.addEventListener('click', () => setMode('login'));
 tabRegister.addEventListener('click', () => setMode('register'));
+
+if (new URLSearchParams(window.location.search).get('reset') === 'ok') {
+  resetSuccessEl.style.display = 'block';
+}
 
 // Если уже залогинены — сразу в дашборд.
 fetch('/api/auth/me').then((r) => {
