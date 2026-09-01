@@ -2,6 +2,7 @@ const { pool } = require('./db');
 const { decrypt } = require('./crypto');
 const { fetchAllSellerPrices, computeSppPercent } = require('./wbClient');
 const { fetchSitePricesViaBrowser } = require('./priceScraper');
+const { buildThumbnailUrl } = require('./wbImage');
 
 /**
  * Полная синхронизация одного пользователя за один шаг (то, что происходит по нажатию
@@ -25,6 +26,11 @@ const { fetchSitePricesViaBrowser } = require('./priceScraper');
  * onProgress(done, total), если передан, вызывается по ходу получения цены на сайте —
  * см. priceScraper.js и src/syncStatus.js (используется, чтобы показать реальный
  * прогресс синхронизации, идущей в фоне, независимо от того, какая страница открыта).
+ *
+ * Заодно, попутно (без отдельных запросов), сохраняет название и миниатюру каждого
+ * товара — название из перехваченного JSON сайта, миниатюру по формуле прямо из
+ * артикула (см. wbImage.js) — это то, что показывается в таблице «Товары и СПП» рядом
+ * с артикулом, чтобы было видно, какой именно это товар.
  *
  * Возвращает { count, skipped, syncedAt, siteWarning }.
  */
@@ -57,10 +63,23 @@ async function syncUserProducts(userId, onProgress) {
     VALUES ($1, $2, $3, $4, $5, $6)
   `;
 
+  // Название и миниатюра хранятся отдельно от снимков цены (см. db.js) — одна строка на
+  // товар, которая просто обновляется каждый раз. COALESCE в UPDATE — чтобы неудачная
+  // попытка (например, name пришёл null, потому что скрейпинг сайта не сработал) не
+  // затирала уже сохранённые ранее данные пустотой.
+  const productUpsertSql = `
+    INSERT INTO products (user_id, nm_id, name, image_url, updated_at)
+    VALUES ($1, $2, $3, $4, now())
+    ON CONFLICT (user_id, nm_id) DO UPDATE SET
+      name = COALESCE(EXCLUDED.name, products.name),
+      image_url = COALESCE(EXCLUDED.image_url, products.image_url),
+      updated_at = now()
+  `;
+
   // Вызывается из priceScraper.js сразу после каждого товара — здесь и происходит
   // собственно "появление строки в таблице": как только снимок сохранён в базу,
   // GET /api/wb/products на следующем опросе с фронтенда уже его отдаст.
-  const onItemDone = async (nmId, sitePrice, done, total) => {
+  const onItemDone = async (nmId, sitePrice, name, done, total) => {
     const item = sellerByNmId.get(nmId);
     if (item) {
       const sppPercent = computeSppPercent(item.sellerPrice, sitePrice);
@@ -77,6 +96,17 @@ async function syncUserProducts(userId, onProgress) {
         // Не прерываем всю синхронизацию из-за проблемы с одной строкой — просто
         // логируем и идём дальше к следующему товару.
         console.error(`syncService: не удалось сохранить снимок nmId ${nmId}:`, err.message);
+      }
+
+      // Миниатюра считается прямо по артикулу (см. wbImage.js) — не зависит от того,
+      // удалось ли получить цену на сайте через браузер/прокси, поэтому появляется даже
+      // если сам скрейпинг цены не сработал. Название, наоборот, есть только если
+      // скрейпинг сайта прошёл успешно — в официальном API "Цены и скидки" его нет.
+      const imageUrl = buildThumbnailUrl(item.nmId);
+      try {
+        await pool.query(productUpsertSql, [userId, item.nmId, name, imageUrl]);
+      } catch (err) {
+        console.error(`syncService: не удалось сохранить карточку товара nmId ${nmId}:`, err.message);
       }
     }
     if (onProgress) onProgress(done, total);

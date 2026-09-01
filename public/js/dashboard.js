@@ -25,6 +25,12 @@ function sppClass(pct) {
   return 'spp-low';
 }
 
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
 async function init() {
   await renderNav('products');
   await refreshStatus();
@@ -64,7 +70,11 @@ function renderProducts() {
   const filter = filterInput.value.trim().toLowerCase();
   const rows = allProducts.filter((p) => {
     if (!filter) return true;
-    return String(p.nmId).includes(filter) || (p.vendorCode || '').toLowerCase().includes(filter);
+    return (
+      String(p.nmId).includes(filter) ||
+      (p.vendorCode || '').toLowerCase().includes(filter) ||
+      (p.name || '').toLowerCase().includes(filter)
+    );
   });
 
   if (rows.length === 0) {
@@ -81,10 +91,26 @@ function renderProducts() {
   emptyState.hidden = true;
 
   productsBody.innerHTML = rows
-    .map(
-      (p) => `
+    .map((p) => {
+      // Миниатюра — best-effort: URL считается по формуле из артикула (см.
+      // src/wbImage.js) и иногда может не найтись (устаревший диапазон корзин, у
+      // товара нет фото и т.п.) — тогда onerror просто убирает <img>, остаётся серый
+      // прямоугольник-заглушка, а не "битая картинка".
+      const thumb = p.imageUrl
+        ? `<img class="product-thumb" src="${escapeHtml(p.imageUrl)}" alt="" loading="lazy" onerror="this.remove()">`
+        : '';
+      const name = escapeHtml(p.name) || 'Название неизвестно';
+      return `
       <tr class="product-row" data-nm="${p.nmId}" style="cursor:pointer;">
-        <td>${p.nmId}</td>
+        <td>
+          <div class="product-cell">
+            <div class="product-thumb-wrap">${thumb}</div>
+            <div class="product-info">
+              <div class="product-name" title="${escapeHtml(p.name || '')}">${name}</div>
+              <div class="product-id">${p.nmId}</div>
+            </div>
+          </div>
+        </td>
         <td>${p.vendorCode || '—'}</td>
         <td>${fmtMoney(p.sellerPrice)}</td>
         <td>${fmtMoney(p.sitePrice)}</td>
@@ -93,8 +119,8 @@ function renderProducts() {
       </tr>
       <tr class="history-row" data-nm-history="${p.nmId}" hidden>
         <td colspan="6"><div class="history-chart" id="history-${p.nmId}"></div></td>
-      </tr>`
-    )
+      </tr>`;
+    })
     .join('');
 
   productsBody.querySelectorAll('.product-row').forEach((row) => {

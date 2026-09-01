@@ -47,6 +47,20 @@ async function migrate() {
 
     CREATE INDEX IF NOT EXISTS idx_snapshots_user_time
       ON price_snapshots (user_id, checked_at);
+
+    -- Название и миниатюра товара — отдельно от price_snapshots, потому что они почти
+    -- никогда не меняются и не нуждаются в истории по времени (в отличие от цены и
+    -- СПП): по одной строке на товар, которая просто обновляется при каждой
+    -- синхронизации, а не размножается на каждый снимок. См. src/syncService.js и
+    -- src/wbImage.js.
+    CREATE TABLE IF NOT EXISTS products (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      nm_id BIGINT NOT NULL,
+      name TEXT,
+      image_url TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, nm_id)
+    );
   `);
 
   // Добавлено позже исходной схемы — ADD COLUMN IF NOT EXISTS безопасно применяется и на

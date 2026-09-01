@@ -81,9 +81,13 @@ router.get('/sync/status', (req, res) => {
 });
 
 router.get('/products', asyncHandler(async (req, res) => {
+  // LEFT JOIN на products — название/миниатюра могли ещё не сохраниться (например,
+  // самая первая синхронизация ещё выполняется и до этого товара очередь не дошла), в
+  // этом случае просто отдаём null, фронтенд покажет заглушку вместо картинки/названия.
   const result = await pool.query(
     `SELECT ps.nm_id AS "nmId", ps.vendor_code AS "vendorCode", ps.seller_price AS "sellerPrice",
-            ps.site_price AS "sitePrice", ps.spp_percent AS "sppPercent", ps.checked_at AS "checkedAt"
+            ps.site_price AS "sitePrice", ps.spp_percent AS "sppPercent", ps.checked_at AS "checkedAt",
+            p.name AS "name", p.image_url AS "imageUrl"
      FROM price_snapshots ps
      INNER JOIN (
        SELECT nm_id, MAX(checked_at) AS max_checked
@@ -91,6 +95,7 @@ router.get('/products', asyncHandler(async (req, res) => {
        WHERE user_id = $1
        GROUP BY nm_id
      ) latest ON latest.nm_id = ps.nm_id AND latest.max_checked = ps.checked_at
+     LEFT JOIN products p ON p.user_id = ps.user_id AND p.nm_id = ps.nm_id
      WHERE ps.user_id = $1
      ORDER BY ps.spp_percent DESC NULLS LAST, ps.nm_id ASC`,
     [req.session.userId]
