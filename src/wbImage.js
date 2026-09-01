@@ -68,18 +68,30 @@ async function refreshRangesFromWb() {
     } finally {
       clearTimeout(timeout);
     }
-    if (!res.ok) return;
+    if (!res.ok) {
+      console.warn(`[wbImage] не удалось обновить таблицу корзин: WB ответил ${res.status}`);
+      return;
+    }
     const json = await res.json();
     if (Array.isArray(json) && json.length > 0) {
       const parsed = json
         .map((r) => ({ maxVol: Number(r.max ?? r.maxVol), basket: Number(r.basket) }))
         .filter((r) => Number.isFinite(r.maxVol) && Number.isFinite(r.basket))
         .sort((a, b) => a.maxVol - b.maxVol);
-      if (parsed.length > 0) liveRanges = parsed;
+      if (parsed.length > 0) {
+        liveRanges = parsed;
+        console.log(
+          `[wbImage] таблица корзин обновлена: ${parsed.length} диапазонов, покрывает vol до ${parsed[parsed.length - 1].maxVol}`
+        );
+      } else {
+        console.warn('[wbImage] WB отдал пустой/нераспознанный формат таблицы корзин, оставляем запасную');
+      }
     }
   } catch (err) {
-    // Тихо игнорируем — это не критичная функция, при неудаче просто работаем на
-    // запасной таблице выше.
+    // Не критично для работы сервиса в целом (миниатюра — не обязательная часть), но
+    // логируем, иначе непонятно, почему картинки не находятся: используется устаревшая
+    // запасная таблица (см. FALLBACK_RANGES выше), и это стоит знать при диагностике.
+    console.warn(`[wbImage] не удалось обновить таблицу корзин, используем запасную: ${err.message}`);
   } finally {
     refreshing = false;
   }
@@ -91,12 +103,24 @@ refreshRangesFromWb();
 const refreshTimer = setInterval(refreshRangesFromWb, 6 * 60 * 60 * 1000);
 if (typeof refreshTimer.unref === 'function') refreshTimer.unref();
 
+let warnedBeyondRange = false;
+
 function basketForVol(vol) {
   const ranges = liveRanges || FALLBACK_RANGES;
   for (const r of ranges) {
     if (vol <= r.maxVol) return r.basket;
   }
-  // Диапазон новее всех известных — берём последнюю известную корзину как лучшую догадку.
+  // Диапазон новее всех известных — берём последнюю известную корзину как лучшую догадку
+  // (скорее всего неверную для по-настоящему новых товаров). Предупреждаем об этом в
+  // логах один раз за запуск процесса, а не на каждый товар, чтобы не засорять лог.
+  if (!warnedBeyondRange) {
+    warnedBeyondRange = true;
+    console.warn(
+      `[wbImage] vol ${vol} выходит за пределы известных диапазонов корзин ` +
+        `(максимум ${ranges[ranges.length - 1].maxVol}) — миниатюра для таких товаров, ` +
+        `скорее всего, будет собрана неверно, если реальный адрес не поймать из браузера`
+    );
+  }
   return ranges[ranges.length - 1].basket;
 }
 

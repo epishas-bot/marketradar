@@ -79,7 +79,7 @@ async function syncUserProducts(userId, onProgress) {
   // Вызывается из priceScraper.js сразу после каждого товара — здесь и происходит
   // собственно "появление строки в таблице": как только снимок сохранён в базу,
   // GET /api/wb/products на следующем опросе с фронтенда уже его отдаст.
-  const onItemDone = async (nmId, sitePrice, name, done, total) => {
+  const onItemDone = async (nmId, sitePrice, name, scrapedImageUrl, done, total) => {
     const item = sellerByNmId.get(nmId);
     if (item) {
       const sppPercent = computeSppPercent(item.sellerPrice, sitePrice);
@@ -98,11 +98,13 @@ async function syncUserProducts(userId, onProgress) {
         console.error(`syncService: не удалось сохранить снимок nmId ${nmId}:`, err.message);
       }
 
-      // Миниатюра считается прямо по артикулу (см. wbImage.js) — не зависит от того,
-      // удалось ли получить цену на сайте через браузер/прокси, поэтому появляется даже
-      // если сам скрейпинг цены не сработал. Название, наоборот, есть только если
-      // скрейпинг сайта прошёл успешно — в официальном API "Цены и скидки" его нет.
-      const imageUrl = buildThumbnailUrl(item.nmId);
+      // Приоритет — реальный адрес картинки, который поймали прямо во время загрузки
+      // страницы товара (priceScraper.js): он гарантированно верный, потому что это
+      // именно то, что в этот момент загрузила сама страница. Если поймать его не
+      // удалось (антибот/таймаут/прокси недоступен), считаем URL по формуле из артикула
+      // (wbImage.js) — это лишь наилучшая догадка и иногда может промахнуться (см.
+      // комментарий в wbImage.js), но лучше, чем совсем ничего не показывать.
+      const imageUrl = scrapedImageUrl || buildThumbnailUrl(item.nmId);
       try {
         await pool.query(productUpsertSql, [userId, item.nmId, name, imageUrl]);
       } catch (err) {

@@ -94,13 +94,16 @@ function extractKopecks(product) {
  * страницы плюс пауза (по умолчанию ~5 сек) перед следующей, чтобы не выглядеть ботом.
  * Для каталога в 50 товаров это несколько минут — предупреждение об этом есть в интерфейсе.
  *
- * onItemDone(nmId, sitePrice, name, done, total), если передан, вызывается после
- * каждого товара (успешного или нет — тогда sitePrice и name будут null) и может быть
+ * onItemDone(nmId, sitePrice, name, imageUrl, done, total), если передан, вызывается
+ * после каждого товара (успешного или нет — тогда все три будут null) и может быть
  * async: вызывающий код (syncService.js) использует это, чтобы сразу сохранить снимок
  * цены в базу и обновить прогресс — так продавец видит товар в таблице сразу, как
  * только он обработан, а не ждёт, пока обработаются вообще все. `name` — название
  * товара из того же перехваченного JSON (официальный API "Цены и скидки" его не
- * возвращает, поэтому единственный источник — сайт).
+ * возвращает, поэтому единственный источник — сайт). `imageUrl` — реальный адрес
+ * главного фото, который загрузила сама страница товара (см. комментарий у
+ * imageResponsePromise ниже) — если по какой-то причине его поймать не удалось,
+ * syncService.js сам подставит запасной вариант, собранный по формуле (wbImage.js).
  */
 async function fetchSitePricesViaBrowser(nmIds, onItemDone) {
   const result = new Map();
@@ -152,6 +155,7 @@ async function fetchSitePricesViaBrowser(nmIds, onItemDone) {
 
       let sitePrice = null;
       let name = null;
+      let imageUrl = null;
 
       try {
         const responsePromise = page
@@ -161,12 +165,28 @@ async function fetchSitePricesViaBrowser(nmIds, onItemDone) {
           )
           .catch(() => null);
 
+        // Реальную картинку товара берём прямо из того, что грузит сама страница, а не
+        // собираем URL по формуле (см. wbImage.js): страница уже точно знает, на каком
+        // сервере-"корзине" лежит фото этого конкретного товара, а формула по vol/part
+        // зависит от таблицы диапазонов, которая у WB время от времени меняется и может
+        // устареть. Раз мы всё равно уже открываем страницу товара за прокси, это
+        // "бесплатно" — второй запрос сайт делает сам, без нашего участия.
+        const imageResponsePromise = page
+          .waitForResponse(
+            (res) => res.url().includes(`/${nmId}/images/`) && res.status() === 200,
+            { timeout: NAV_TIMEOUT_MS }
+          )
+          .catch(() => null);
+
         await page.goto(`https://www.wildberries.ru/catalog/${nmId}/detail.aspx`, {
           waitUntil: 'domcontentloaded',
           timeout: NAV_TIMEOUT_MS,
         });
 
-        const response = await responsePromise;
+        const [response, imageResponse] = await Promise.all([responsePromise, imageResponsePromise]);
+        if (imageResponse) {
+          imageUrl = imageResponse.url();
+        }
         if (response) {
           const json = await response.json().catch(() => null);
           const products = json?.products || json?.data?.products || [];
@@ -199,7 +219,7 @@ async function fetchSitePricesViaBrowser(nmIds, onItemDone) {
       // onItemDone получает результат сразу по каждому товару (а не пачкой в конце) —
       // это то, что позволяет syncService.js сохранять снимок в базу и продавцу видеть
       // строку в таблице сразу, как только она обработалась, а не ждать весь прогон.
-      if (onItemDone) await onItemDone(nmId, sitePrice, name, i + 1, nmIds.length);
+      if (onItemDone) await onItemDone(nmId, sitePrice, name, imageUrl, i + 1, nmIds.length);
 
       if (i < nmIds.length - 1) {
         await sleep(jitter(NAV_DELAY_MS));
