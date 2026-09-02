@@ -260,11 +260,15 @@ async function pollSyncStatus() {
 
   const skippedNote = data.skipped > 0 ? ` (пропущено ${data.skipped} — лимит тарифа)` : '';
   await loadProducts();
-  if (data.siteWarning) {
+  const warnings = [];
+  if (data.siteWarning) warnings.push(`Цену на сайте получить не удалось: ${data.siteWarning}`);
+  if (data.contentWarning) warnings.push(`Название/фото товаров не обновлены: ${data.contentWarning}`);
+  if (data.realizationWarning) warnings.push(`История продаж не обновлена: ${data.realizationWarning}`);
+  if (warnings.length > 0) {
     syncStatus.classList.add('sync-warning');
     syncStatus.textContent =
       `Цены продавца обновлены: ${data.count} товаров${skippedNote}, ${fmtDate(data.syncedAt)}. ` +
-      `Цену на сайте получить не удалось: ${data.siteWarning}`;
+      warnings.join(' ');
   } else {
     syncStatus.textContent = `Обновлено: ${data.count} товаров${skippedNote}, ${fmtDate(data.syncedAt)}.`;
   }
