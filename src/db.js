@@ -82,6 +82,17 @@ async function migrate() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires TIMESTAMPTZ;
   `);
+
+  // source различает, откуда взялась строка price_snapshots — 'scrape' (периодическая
+  // проверка сайта через браузер, priceScraper.js) или 'realization' (реальная прошедшая
+  // продажа из официального отчёта WB, wbStatisticsClient.js). Нужно, чтобы можно было
+  // отдельно сверить, насколько точны были наши собственные замеры через сайт по
+  // сравнению с тем, что WB сам подтвердил по факту продажи для того же товара и
+  // примерно той же даты (см. README). DEFAULT 'scrape' — потому что все строки,
+  // сохранённые до появления этой колонки, были именно от браузерного скрейпинга.
+  await pool.query(`
+    ALTER TABLE price_snapshots ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'scrape';
+  `);
 }
 
 module.exports = { pool, migrate };

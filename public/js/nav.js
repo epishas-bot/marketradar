@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { key: 'card-transfer', href: '/card-transfer.html', label: 'Перенос карточек', soon: true },
   { key: 'labels', href: '/labels.html', label: 'Этикетки', soon: true },
   { key: 'content', href: '/content.html', label: 'Контент карточек', soon: true },
+  { key: 'settings', href: '/settings.html', label: 'Настройки' },
 ];
 
 async function renderNav(activeKey) {

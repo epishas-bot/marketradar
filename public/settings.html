@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Настройки — MarketRadar</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <div id="app-nav"></div>
+
+    <div class="card panel">
+      <h2>API-токен Wildberries</h2>
+      <p class="lede" id="token-status-line">Проверяем текущее подключение…</p>
+
+      <div class="field">
+        <label for="wb-token">Новый API-токен</label>
+        <input type="text" id="wb-token" placeholder="eyJhbGciOi...">
+      </div>
+      <p style="font-size:0.85rem;color:var(--ink-soft);margin:-6px 0 14px;">
+        Вставьте сюда токен, если хотите заменить текущий — например, после того как
+        добавили в кабинете WB новую категорию доступа тому же токену (или выпустили
+        новый). Личный кабинет продавца → Настройки → Доступ к API → отметьте на чтение:
+        <b>«Цены и скидки»</b>, <b>«Контент»</b> и <b>«Статистика»</b> — это всё, что
+        нужно MarketRadar. Старый токен продолжит работать, пока вы не сохраните новый.
+      </p>
+      <div class="error-msg" id="token-error"></div>
+      <div class="success-msg" id="token-success" style="display:none;"></div>
+      <button type="button" id="save-token-btn">Сохранить токен</button>
+    </div>
+  </div>
+
+  <script src="/js/nav.js"></script>
+  <script src="/js/settings.js"></script>
+</body>
+</html>

@@ -128,17 +128,21 @@ async function syncUserProducts(userId, onProgress) {
   const nmIds = sellerItems.map((item) => item.nmId);
   const sellerByNmId = new Map(sellerItems.map((item) => [item.nmId, item]));
 
+  // source='scrape' — эта строка от периодической проверки цены на сайте через браузер
+  // (см. db.js — колонка source нужна, чтобы позже можно было отдельно сверить точность
+  // наших собственных замеров против source='realization' ниже — настоящих подтверждённых
+  // WB продаж того же товара примерно за тот же период).
   const insertSql = `
-    INSERT INTO price_snapshots (user_id, nm_id, vendor_code, seller_price, site_price, spp_percent)
-    VALUES ($1, $2, $3, $4, $5, $6)
+    INSERT INTO price_snapshots (user_id, nm_id, vendor_code, seller_price, site_price, spp_percent, source)
+    VALUES ($1, $2, $3, $4, $5, $6, 'scrape')
   `;
 
-  // То же самое, но с явно заданным checked_at — для исторических точек из отчёта о
-  // реализации (см. ниже), где момент события — это дата реальной продажи в прошлом, а
-  // не "сейчас" (в insertSql выше это всегда now() по умолчанию).
+  // То же самое, но с явно заданным checked_at и source='realization' — для исторических
+  // точек из отчёта о реализации (см. ниже), где момент события — это дата реальной
+  // продажи в прошлом, а не "сейчас" (в insertSql выше это всегда now() по умолчанию).
   const insertHistoricalSql = `
-    INSERT INTO price_snapshots (user_id, nm_id, vendor_code, seller_price, site_price, spp_percent, checked_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    INSERT INTO price_snapshots (user_id, nm_id, vendor_code, seller_price, site_price, spp_percent, checked_at, source)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, 'realization')
   `;
 
   // История реальных продаж (см. wbStatisticsClient.js) — настоящая, подтверждённая
