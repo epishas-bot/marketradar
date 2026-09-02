@@ -19,6 +19,20 @@
 // LTE-прокси + обычный Chrome показали реальную карточку с реальной ценой без единой
 // блокировки) плюс настоящий браузер, который честно проходит антибот-проверку сам.
 //
+// ВАЖНО про сессию/куки (добавлено после того, как в проде поймали блокировку "WB
+// заблокировал доступ с текущего IP как подозрительную активность" при полностью рабочем
+// прокси): разобрали, как это решают сторонние сервисы аналитики (EVIRMA, WBCON) — они
+// либо ставят расширение прямо в реальный браузер продавца (то есть используют его же
+// настоящую, годами живущую сессию с куками), либо явно контролируют "валидность и
+// работоспособность кукис" на своей стороне. Ни один не бьёт по WB с абсолютно пустого,
+// свежесозданного профиля без единой куки — а именно так раньше работал этот файл:
+// `browser.newContext()` заново на КАЖДЫЙ товар. Для антибота это один из самых
+// характерных признаков автоматизации (у настоящего человека в браузере уже есть история
+// куки с прошлых визитов). Поэтому теперь один и тот же браузерный профиль (контекст)
+// используется на весь прогон синхронизации и его куки (storageState) сохраняются в базу
+// между запусками (см. loadStorageState/saveStorageState ниже) — так профиль копит
+// историю совсем как настоящий браузер, а не начинает с нуля каждый раз.
+//
 // Как это устроено технически: страница товара сама, уже пройдя антибот-проверку,
 // делает подгружаемый JS-запрос к внутреннему (не публичному) эндпоинту
 // `www.wildberries.ru/__internal/u-card/cards/v4/detail?...&nm=<id>` — мы не бьём по
@@ -32,13 +46,38 @@
 // из title, только из перехваченного JSON.
 
 const { chromium } = require('playwright');
+const { pool } = require('./db');
 
-const NAV_DELAY_MS = Number(process.env.SCRAPE_DELAY_MS) || 5000; // пауза между товарами
-const ROTATE_EVERY = Number(process.env.SCRAPE_ROTATE_EVERY) || 15; // смена IP раз в N товаров
+const SESSION_STATE_KEY = 'wb_browser_session';
+
+const NAV_DELAY_MS = Number(process.env.SCRAPE_DELAY_MS) || 8000; // пауза между товарами
+const ROTATE_EVERY = Number(process.env.SCRAPE_ROTATE_EVERY) || 8; // смена IP раз в N товаров
 const NAV_TIMEOUT_MS = Number(process.env.SCRAPE_NAV_TIMEOUT_MS) || 25000;
+// Сколько раз подряд можно словить явную блокировку антибота WB ("Подозрительная
+// активность"), прежде чем прекратить прогон досрочно. Смысл — не тратить время на
+// оставшиеся товары каталога, если текущий IP уже точно заблокирован: WB сам называет
+// время до разблокировки (обычно 15-20 минут), и до этого момента КАЖДЫЙ следующий
+// запрос всё равно провалится тем же образом — упорствовать бессмысленно и только
+// портит репутацию IP ещё сильнее.
+const BLOCK_CIRCUIT_THRESHOLD = Number(process.env.SCRAPE_BLOCK_THRESHOLD) || 3;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Распознаёт характерную заглушку антибота WB ("Что-то не так... Подозрительная
+// активность... Новая попытка через MM:SS") — проверено вживую (см. логи синхронизации):
+// WB в открытую называет причину и даже время до снятия блокировки. Возвращает время до
+// разблокировки в секундах, если удалось его найти в тексте, иначе null (значит просто
+// "заблокировано", без известного таймера).
+function detectAntibotBlock(bodyText) {
+  if (!bodyText) return null;
+  if (!/подозрительн|что-то не так/i.test(bodyText)) return null;
+  const match = bodyText.match(/через\s+(\d{1,2}):(\d{2})/);
+  if (match) {
+    return Number(match[1]) * 60 + Number(match[2]);
+  }
+  return 0; // блокировка распознана, но время до снятия в тексте не нашли
 }
 
 // Небольшой случайный разброс вокруг базовой паузы — так последовательность запросов
@@ -74,6 +113,38 @@ function parseProxies(raw) {
     .filter(Boolean);
 }
 
+// Загружает сохранённые куки браузера (storageState) из прошлых прогонов — если их ещё
+// не было (первый запуск) или чтение не удалось, возвращает undefined, и Playwright
+// просто откроет чистый профиль (тогда накопление истории начнётся с этого раза).
+async function loadStorageState() {
+  try {
+    const res = await pool.query('SELECT value FROM app_state WHERE key = $1', [SESSION_STATE_KEY]);
+    if (res.rows.length > 0 && res.rows[0].value) {
+      return JSON.parse(res.rows[0].value);
+    }
+  } catch (err) {
+    console.warn('[priceScraper] не удалось загрузить сохранённую сессию браузера:', err.message);
+  }
+  return undefined;
+}
+
+// Сохраняет текущие куки контекста в базу, чтобы следующий запуск синхронизации (даже
+// после перезапуска сервиса) продолжил с тем же "прожитым" профилем, а не с нуля.
+// Best-effort: сбой сохранения не должен ронять саму синхронизацию.
+async function saveStorageState(context) {
+  if (!context) return;
+  try {
+    const state = await context.storageState();
+    await pool.query(
+      `INSERT INTO app_state (key, value, updated_at) VALUES ($1, $2, now())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+      [SESSION_STATE_KEY, JSON.stringify(state)]
+    );
+  } catch (err) {
+    console.warn('[priceScraper] не удалось сохранить сессию браузера:', err.message);
+  }
+}
+
 function extractKopecks(product) {
   if (!product) return null;
   return (
@@ -88,11 +159,20 @@ function extractKopecks(product) {
  * Достаёт цену на сайте (после скидки продавца и после СПП) для набора nmId через
  * настоящий браузер, за резидентными/мобильными прокси из RESIDENTIAL_PROXIES.
  * Возвращает Map(nmId -> цена в рублях); на самой Map — `.error`, если не получилось
- * получить ни одной цены (например, прокси не настроены или все запросы заблокированы).
+ * получить ни одной цены (например, прокси не настроены или все запросы заблокированы),
+ * или если прогон остановился досрочно из-за блокировки антибота (см. ниже).
  *
  * Это ощутимо медленнее одного HTTP-запроса: на каждый товар — полноценная загрузка
- * страницы плюс пауза (по умолчанию ~5 сек) перед следующей, чтобы не выглядеть ботом.
+ * страницы плюс пауза (по умолчанию ~8 сек) перед следующей, чтобы не выглядеть ботом.
  * Для каталога в 50 товаров это несколько минут — предупреждение об этом есть в интерфейсе.
+ *
+ * Защита от блокировки антибота WB: если несколько товаров подряд (см.
+ * SCRAPE_BLOCK_THRESHOLD, по умолчанию 3) упираются в явную заглушку WB "Подозрительная
+ * активность" (см. detectAntibotBlock), прогон останавливается досрочно вместо того,
+ * чтобы вхолостую перебрать весь оставшийся список — если WB заблокировал именно этот
+ * IP, следующий товар провалится точно так же, а лишние попытки только продлевают
+ * подозрение на IP. Необработанные товары просто останутся со старыми данными до
+ * следующей синхронизации.
  *
  * onItemDone(nmId, sitePrice, name, imageUrl, done, total), если передан, вызывается
  * после каждого товара (успешного или нет — тогда все три будут null) и может быть
@@ -117,12 +197,28 @@ async function fetchSitePricesViaBrowser(nmIds, onItemDone) {
   }
 
   let browser = null;
+  let context = null;
   let proxyIndex = 0;
   let requestsOnCurrentProxy = 0;
   let failedCount = 0;
   let lastError = null;
+  let consecutiveBlocks = 0;
+  let stoppedEarly = null; // текст причины, если прогон прервался досрочно из-за блокировки
+
+  // Куки этого профиля переживают и смену прокси внутри одного прогона, и сам прогон —
+  // при смене IP (openBrowserWithNextProxy) новый контекст открывается с теми же
+  // накопленными куками, а не с чистого листа (см. заголовок файла: не выглядеть
+  // "свежесозданным" профилем без единой куки — характерный признак бота). Загружаем
+  // единожды перед стартом; после каждой ротации и в самом конце — сохраняем обратно.
+  let sessionState = await loadStorageState();
 
   async function openBrowserWithNextProxy() {
+    if (context) {
+      // Забираем актуальные куки перед закрытием, чтобы следующий контекст (новый IP)
+      // продолжил ту же историю, а не начал с той версии, что была загружена в начале.
+      sessionState = await context.storageState().catch(() => sessionState);
+      await context.close().catch(() => {});
+    }
     if (browser) {
       await browser.close().catch(() => {});
     }
@@ -133,10 +229,36 @@ async function fetchSitePricesViaBrowser(nmIds, onItemDone) {
       proxy,
       args: ['--disable-blink-features=AutomationControlled'],
     });
+    context = await browser.newContext({
+      locale: 'ru-RU',
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+      storageState: sessionState,
+    });
     requestsOnCurrentProxy = 0;
   }
 
+  const isFreshProfile = !sessionState;
   await openBrowserWithNextProxy();
+
+  if (isFreshProfile) {
+    // Самый первый запуск (ещё нет ни одной сохранённой куки) — заходим сначала на
+    // главную страницу, как обычный посетитель, а не сразу открываем товар за товаром.
+    // Это даёт профилю первые обычные куки WB (аналитика, регион и т.п.) ещё до того,
+    // как он вообще коснётся карточек товаров. Не критично, если это не удастся — цикл
+    // ниже всё равно продолжит работу и накопит историю по ходу самих товаров.
+    try {
+      const warmupPage = await context.newPage();
+      await warmupPage.goto('https://www.wildberries.ru/', {
+        waitUntil: 'domcontentloaded',
+        timeout: NAV_TIMEOUT_MS,
+      });
+      await sleep(jitter(2000));
+      await warmupPage.close().catch(() => {});
+    } catch (err) {
+      console.warn('[priceScraper] не удалось "прогреть" новый профиль на главной странице:', err.message);
+    }
+  }
 
   try {
     for (let i = 0; i < nmIds.length; i++) {
@@ -146,16 +268,15 @@ async function fetchSitePricesViaBrowser(nmIds, onItemDone) {
         await openBrowserWithNextProxy();
       }
 
-      const context = await browser.newContext({
-        locale: 'ru-RU',
-        userAgent:
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-      });
+      // Одна вкладка на товар, но КОНТЕКСТ (и его куки) — общий на весь прогон, а не
+      // новый на каждый товар: так профиль постепенно копит настоящую историю визитов
+      // вместо того, чтобы каждый раз выглядеть как "первый визит" случайного человека.
       const page = await context.newPage();
 
       let sitePrice = null;
       let name = null;
       let imageUrl = null;
+      let blockSecondsLeft = null; // распознанная блокировка антибота WB на этом товаре
 
       try {
         const responsePromise = page
@@ -224,6 +345,7 @@ async function fetchSitePricesViaBrowser(nmIds, onItemDone) {
             const bodyText = await page
               .evaluate(() => document.body?.innerText?.slice(0, 200) || '')
               .catch(() => '');
+            blockSecondsLeft = detectAntibotBlock(bodyText);
             diagnostic =
               ` — адрес: "${url}", заголовок: "${title}"` +
               `${vpnBlock ? ', обнаружен блок VPN/прокси (#blockedVpn)' : ''}` +
@@ -239,7 +361,9 @@ async function fetchSitePricesViaBrowser(nmIds, onItemDone) {
         lastError = `nmId ${nmId}: ${err.message}`;
         console.warn(`[priceScraper] ${lastError}`);
       } finally {
-        await context.close().catch(() => {});
+        // Закрываем только вкладку — сам контекст (и его куки) остаётся жить до конца
+        // прогона или до следующей ротации прокси, см. комментарий выше.
+        await page.close().catch(() => {});
       }
 
       requestsOnCurrentProxy += 1;
@@ -248,15 +372,54 @@ async function fetchSitePricesViaBrowser(nmIds, onItemDone) {
       // строку в таблице сразу, как только она обработалась, а не ждать весь прогон.
       if (onItemDone) await onItemDone(nmId, sitePrice, name, imageUrl, i + 1, nmIds.length);
 
+      if (blockSecondsLeft !== null) {
+        // WB явно заблокировал именно этот IP (см. detectAntibotBlock выше) — продолжать
+        // бить в него следующими товарами бессмысленно, каждый провалится точно так же.
+        // Сразу переключаемся на новую попытку подключения (при ротации это может дать
+        // другой IP — LTE Center и подобные сервисы меняют адрес за хостом каждые
+        // несколько минут) и ждём заметно дольше обычного, а не как между обычными
+        // товарами.
+        consecutiveBlocks += 1;
+        console.warn(
+          `[priceScraper] блокировка антибота WB подряд №${consecutiveBlocks}` +
+            (blockSecondsLeft > 0 ? ` (сам WB просит подождать ~${blockSecondsLeft} сек)` : '')
+        );
+        if (consecutiveBlocks >= BLOCK_CIRCUIT_THRESHOLD) {
+          stoppedEarly =
+            `WB заблокировал доступ с текущего IP как подозрительную активность ` +
+            `${consecutiveBlocks} раз(а) подряд — дальше проверять товары сейчас бессмысленно, ` +
+            `каждый следующий провалится так же. ${blockSecondsLeft > 0 ? `WB просит подождать ~${Math.ceil(blockSecondsLeft / 60)} мин. ` : ''}` +
+            `Остановил синхронизацию досрочно (обработано ${i + 1} из ${nmIds.length} товаров) — ` +
+            `остальные попробуются в следующий раз.`;
+          console.warn(`[priceScraper] ${stoppedEarly}`);
+          break;
+        }
+        if (proxies.length > 0) {
+          await openBrowserWithNextProxy();
+        }
+        await sleep(jitter(NAV_DELAY_MS * 3));
+        continue;
+      }
+
+      // Успешный или "обычный" (не блокировочный) неудачный товар — сбрасываем счётчик
+      // подряд идущих блокировок, раз серия прервалась.
+      consecutiveBlocks = 0;
+
       if (i < nmIds.length - 1) {
         await sleep(jitter(NAV_DELAY_MS));
       }
     }
   } finally {
+    // Сохраняем накопленные куки в базу перед закрытием — следующий прогон (даже после
+    // перезапуска сервиса) продолжит с этим же "прожитым" профилем, а не с нуля.
+    await saveStorageState(context);
+    if (context) await context.close().catch(() => {});
     if (browser) await browser.close().catch(() => {});
   }
 
-  if (result.size === 0 && nmIds.length > 0) {
+  if (stoppedEarly) {
+    result.error = stoppedEarly;
+  } else if (result.size === 0 && nmIds.length > 0) {
     result.error =
       `Не удалось получить ни одной цены с сайта (${failedCount} из ${nmIds.length} товаров не удались). ` +
       `Последняя ошибка: ${lastError || 'неизвестна'}.`;
