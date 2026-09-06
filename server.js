@@ -40,6 +40,47 @@ app.use('/api/wb', wbRoutes);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
+// ВРЕМЕННЫЙ диагностический роут — проверяет, отдаёт ли card.wb.ru (публичный
+// JSON API карточки товара, тот же, что использует фронтенд самого WB для
+// показа цены на странице товара) данные при прямом запросе с сервера Render,
+// без прокси и без браузера. Если отдаёт — весь мобильный прокси можно не
+// поднимать вообще, потому что цену покупателя можно брать этим запросом.
+// Удалить после проверки (см. README, раздел про card.wb.ru).
+app.get('/api/debug/wb-card-test', async (req, res) => {
+  const nm = req.query.nm || '191634653'; // артикул по умолчанию для теста
+  const dest = req.query.dest || '-1257786'; // Москва
+  const url =
+    `https://card.wb.ru/cards/v4/detail?appType=1&curr=rub&dest=${dest}` +
+    `&hide_dtype=13&spp=30&ab_testing=false&lang=ru&nm=${nm}`;
+  try {
+    const r = await fetch(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+        Accept: 'application/json',
+        Referer: 'https://www.wildberries.ru/',
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+    const text = await r.text();
+    let parsed = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      /* не JSON — оставим сырой текст ниже */
+    }
+    res.json({
+      requestedUrl: url,
+      status: r.status,
+      ok: r.ok,
+      bodyPreview: text.slice(0, 500),
+      hasProducts: !!(parsed?.data?.products || parsed?.products),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message, requestedUrl: url });
+  }
+});
+
 app.use(
   express.static(path.join(__dirname, 'public'), {
     // Без этого браузеры иногда продолжают показывать старую версию dashboard.js/style.css
