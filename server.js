@@ -81,6 +81,47 @@ app.get('/api/debug/wb-card-test', async (req, res) => {
   }
 });
 
+// ВРЕМЕННЫЙ диагностический роут — проверяет, отдаёт ли официальный API
+// Wildberries "Цены и скидки" данные при обращении с сервера Render по
+// личному API-токену продавца (токен передаётся через переменную окружения
+// WB_TEST_API_TOKEN, в код не зашит). Если отвечает нормально — свою цену
+// продавца можно получать этим способом вместо разбора страницы кабинета.
+// Удалить после проверки.
+app.get('/api/debug/wb-prices-test', async (req, res) => {
+  const token = process.env.WB_TEST_API_TOKEN;
+  if (!token) {
+    res.status(500).json({ error: 'WB_TEST_API_TOKEN не задан на сервере' });
+    return;
+  }
+  const limit = req.query.limit || '10';
+  const url = `https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter?limit=${limit}&offset=0`;
+  try {
+    const r = await fetch(url, {
+      headers: {
+        Authorization: token,
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+    const text = await r.text();
+    let parsed = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      /* не JSON — оставим сырой текст ниже */
+    }
+    res.json({
+      requestedUrl: url,
+      status: r.status,
+      ok: r.ok,
+      bodyPreview: text.slice(0, 800),
+      goodsCount: parsed?.data?.listGoods?.length ?? null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message, requestedUrl: url });
+  }
+});
+
 app.use(
   express.static(path.join(__dirname, 'public'), {
     // Без этого браузеры иногда продолжают показывать старую версию dashboard.js/style.css
