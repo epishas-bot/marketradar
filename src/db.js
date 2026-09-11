@@ -93,6 +93,16 @@ async function migrate() {
   await pool.query(`
     ALTER TABLE price_snapshots ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'scrape';
   `);
+
+  // Личный ключ для браузерного расширения (см. wb-extension/ и src/routes/ext.js) —
+  // отдельный от пароля/сессии сайта способ авторизации, потому что расширение живёт в
+  // другом браузерном контексте и не может использовать cookie сессии сайта. Продавец
+  // один раз копирует этот ключ со страницы "Настройки" в попап расширения; расширение
+  // присылает его в заголовке на каждый запрос к /api/ext/*. NULL, пока ключ ни разу не
+  // запрашивали — генерируется лениво при первом обращении к GET /api/wb/extension-key.
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS extension_api_key TEXT UNIQUE;
+  `);
 }
 
 module.exports = { pool, migrate };

@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const { pool } = require('../db');
 const { encrypt } = require('../crypto');
 const { verifyToken, WbApiError } = require('../wbClient');
@@ -9,6 +10,33 @@ const { asyncHandler } = require('../asyncHandler');
 
 const router = express.Router();
 router.use(requireAuth);
+
+function generateExtensionKey() {
+  return `mr_ext_${crypto.randomBytes(24).toString('base64url')}`;
+}
+
+// Ключ для браузерного расширения (см. wb-extension/ и src/routes/ext.js) — отдаётся
+// продавцу на странице "Настройки", чтобы вставить в попап расширения. Генерируется
+// лениво при первом обращении, а не при регистрации, — большинству продавцов он вообще
+// не понадобится.
+router.get('/extension-key', asyncHandler(async (req, res) => {
+  const existing = await pool.query('SELECT extension_api_key FROM users WHERE id = $1', [req.session.userId]);
+  let key = existing.rows[0]?.extension_api_key;
+  if (!key) {
+    key = generateExtensionKey();
+    await pool.query('UPDATE users SET extension_api_key = $1 WHERE id = $2', [key, req.session.userId]);
+  }
+  res.json({ key });
+}));
+
+// Перевыпуск ключа — старый сразу перестаёт работать (например, если случайно попал в
+// чужие руки). Расширение на всех устройствах, где вставлен старый ключ, придётся
+// подключить заново новым.
+router.post('/extension-key/regenerate', asyncHandler(async (req, res) => {
+  const key = generateExtensionKey();
+  await pool.query('UPDATE users SET extension_api_key = $1 WHERE id = $2', [key, req.session.userId]);
+  res.json({ key });
+}));
 
 router.post('/token', asyncHandler(async (req, res) => {
   const { token } = req.body || {};

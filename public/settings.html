@@ -29,6 +29,26 @@
       <div class="success-msg" id="token-success" style="display:none;"></div>
       <button type="button" id="save-token-btn">Сохранить токен</button>
     </div>
+
+    <div class="card panel">
+      <h2>Расширение для браузера</h2>
+      <p class="lede">
+        Показывает СПП прямо на странице товара Wildberries. Установите расширение,
+        затем вставьте в его настройки ключ ниже — так оно поймёт, какой это аккаунт
+        MarketRadar.
+      </p>
+      <div class="field">
+        <label for="ext-key-value">Ключ расширения</label>
+        <input type="text" id="ext-key-value" readonly>
+      </div>
+      <div class="error-msg" id="ext-key-error"></div>
+      <button type="button" id="show-ext-key-btn">Показать / создать ключ</button>
+      <button type="button" id="regen-ext-key-btn" style="margin-left:8px;">Выпустить новый</button>
+      <p style="font-size:0.85rem;color:var(--ink-soft);margin:14px 0 0;">
+        «Выпустить новый» отключит текущий ключ везде, где он уже вставлен, — обычно
+        нужно, только если ключ случайно попал не в те руки.
+      </p>
+    </div>
   </div>
 
   <script src="/js/nav.js"></script>

@@ -24,6 +24,32 @@ async function loadStatus() {
     : 'Токен ещё не подключён — вставьте его в поле ниже.';
 }
 
+const extKeyInput = document.getElementById('ext-key-value');
+const extKeyError = document.getElementById('ext-key-error');
+const showExtKeyBtn = document.getElementById('show-ext-key-btn');
+const regenExtKeyBtn = document.getElementById('regen-ext-key-btn');
+
+async function fetchExtensionKey(url) {
+  extKeyError.textContent = '';
+  try {
+    const res = await fetch(url, { method: url.endsWith('regenerate') ? 'POST' : 'GET' });
+    const data = await res.json();
+    if (!res.ok) {
+      extKeyError.textContent = data.error || 'Не удалось получить ключ';
+      return;
+    }
+    extKeyInput.value = data.key;
+  } catch (err) {
+    extKeyError.textContent = 'Не удалось связаться с сервером';
+  }
+}
+
+showExtKeyBtn.addEventListener('click', () => fetchExtensionKey('/api/wb/extension-key'));
+regenExtKeyBtn.addEventListener('click', () => {
+  if (!confirm('Старый ключ перестанет работать во всех расширениях, где он уже вставлен. Продолжить?')) return;
+  fetchExtensionKey('/api/wb/extension-key/regenerate');
+});
+
 async function init() {
   await renderNav('settings');
   await loadStatus();

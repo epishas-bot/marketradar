@@ -7,6 +7,7 @@ const pgSessionFactory = require('connect-pg-simple');
 const { pool, migrate } = require('./src/db');
 const authRoutes = require('./src/routes/auth');
 const wbRoutes = require('./src/routes/wb');
+const extRoutes = require('./src/routes/ext');
 const { syncUserProducts } = require('./src/syncService');
 const syncStatus = require('./src/syncStatus');
 
@@ -37,6 +38,7 @@ app.use(
 
 app.use('/api/auth', authRoutes);
 app.use('/api/wb', wbRoutes);
+app.use('/api/ext', extRoutes);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
